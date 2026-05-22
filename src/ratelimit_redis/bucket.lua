@@ -1,21 +1,24 @@
 -- bucket.lua: atomic token-bucket consume.
 -- KEYS[1]   = bucket key
 -- ARGV[1]   = capacity
--- ARGV[2]   = refill per second
+-- ARGV[2]   = refill per second (note: rounded down to nearest integer per call)
 -- ARGV[3]   = cost
 --
 -- The function returns {allowed (0/1), remaining tokens (int)}.
 --
 -- Stored state at KEYS[1] is a hash with fields:
---   tokens : last observed bucket level (float, stored as string)
+--   tokens : last observed bucket level (integer count, stored as string)
 --   ts     : Redis-server wall clock at last update (ms, integer)
+--
+-- Note on refill semantics: although the constructor accepts a float
+-- refill_per_sec, the Lua side rounds the per-call refill increment
+-- down to an integer. This is a deliberate choice to make the
+-- algorithm easier to reason about; sub-token refill is therefore
+-- effectively quantized to 1-token-per-elapsed-second.
 --
 -- Atomicity: this script runs as a single Redis command (EVALSHA), so
 -- the refill + consume sequence is not interleaved with any other
--- client's evalsha against the same key. Reproducing the same logic
--- as a sequence of GET + SET commands from the Python client would
--- not be safe, even though Redis itself is single-threaded; the
--- network round trips between separate commands open a race window.
+-- client's evalsha against the same key.
 
 local key      = KEYS[1]
 local capacity = tonumber(ARGV[1])
